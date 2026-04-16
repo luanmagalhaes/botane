@@ -7,6 +7,7 @@ import type {
   ShopifyDraftItem,
   ParsedOrder,
 } from "./types.js";
+import { toolExtractCustomData } from "../services/customParser.js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -111,6 +112,21 @@ const TOOLS: Anthropic.Tool[] = [
         email_id: {
           type: "string",
           description: "The email ID of the order to verify",
+        },
+      },
+      required: ["email_id"],
+    },
+  },
+  {
+    name: "extract_structured_order_data",
+    description:
+      "A custom extraction tool to extract complex order items from emails and Excel/PDF files. Use this ONLY when you need items with exact ean_or_sku, strict currency standard, prices, and the correct client_name. Returns a strict JSON dictionary.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        email_id: {
+          type: "string",
+          description: "The email ID from read_inbox results",
         },
       },
       required: ["email_id"],
@@ -379,6 +395,8 @@ async function runTool(
       return toolCreateShopifyDraft(input.email_id, emit);
     case "verify_order_total":
       return toolVerifyOrderTotal(input.email_id, emit);
+    case "extract_structured_order_data":
+      return await toolExtractCustomData(input.email_id, fetchEmail, emit);
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` });
   }
