@@ -1,4 +1,5 @@
 import express, { Request, Response } from "express";
+import cors from "cors";
 import path from "path";
 import { runOrchestrator } from "./botane/pipeline.js";
 import type { SSEEvent } from "./botane/types.js";
@@ -6,6 +7,7 @@ import type { SSEEvent } from "./botane/types.js";
 const app = express();
 const PORT = 4000;
 
+app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(process.cwd(), "public")));
 
