@@ -7,26 +7,41 @@ AI-powered B2B order management agent for Botané Studios. Chat naturally with t
 | Layer | Technology |
 |---|---|
 | Runtime | Node.js |
-| Language | TypeScript (via `tsx`, no compile step) |
+| Language | TypeScript |
 | AI | Anthropic API — `claude-sonnet-4-6` |
 | Agent pattern | Tool use loop (ReAct) |
 | Server | Express 5 |
 | Real-time | Server-Sent Events (SSE) |
-| Frontend | Vanilla HTML/CSS/JS (no framework) |
+| Frontend | Next.js 16 + shadcn/ui + Tailwind CSS |
+| Email | Gmail via IMAP (`imapflow` + `mailparser`) |
+| PDF parsing | `pdf-parse` |
 
 ## Project structure
 
 ```
-src/
-  server.ts              # Express server + SSE endpoints
+src/                          # Express backend
+  server.ts                   # HTTP server + SSE endpoints
   botane/
-    pipeline.ts          # Agent orchestrator + all tool definitions
-    types.ts             # TypeScript interfaces
-    mock-data.ts         # Mock inbox, stock data, parsed orders (demo)
-  index.ts               # Standalone API test script
-  tools.ts               # Tool use learning example (weather + calculator)
-public/
-  index.html             # Chat UI
+    pipeline.ts               # Agent orchestrator + tool definitions
+    gmail.ts                  # Gmail IMAP connection + email fetching
+    types.ts                  # TypeScript interfaces
+    mock-data.ts              # Stock data (Shopify integration pending)
+  index.ts                    # Standalone API test script
+  tools.ts                    # Tool use learning example
+
+frontend/                     # Next.js frontend
+  app/
+    page.tsx                  # Entry point
+    layout.tsx                # Root layout
+    icon.tsx                  # Favicon (flower SVG)
+  components/chat/
+    ChatWindow.tsx            # Main chat layout
+    MessageBubble.tsx         # User + assistant message rendering
+    AgentLog.tsx              # Real-time agent activity steps
+    ChatInput.tsx             # Textarea + suggestion buttons
+  lib/
+    useChat.ts                # SSE hook + message state
+    types.ts                  # Frontend types
 ```
 
 ## How the agent works
@@ -78,13 +93,23 @@ export GMAIL_APP_PASSWORD="xxxx xxxx xxxx xxxx"
 - Anthropic API key: [console.anthropic.com](https://console.anthropic.com)
 - Gmail App Password: [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
 
-### 3. Run
+### 3. Run the backend
 
 ```bash
 npm run dev
 ```
 
 Server starts at `http://localhost:4000`.
+
+### 4. Run the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend starts at `http://localhost:3000` (or next available port).
 
 ## Scripts
 
