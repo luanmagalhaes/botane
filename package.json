@@ -1,0 +1,30 @@
+{
+  "name": "agentic",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "tools": "tsx src/tools.ts",
+    "dev": "tsx src/server.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.88.0",
+    "@types/express": "^5.0.6",
+    "@types/mailparser": "^3.4.6",
+    "@types/pdf-parse": "^1.1.5",
+    "express": "^5.2.1",
+    "imapflow": "^1.3.1",
+    "mailparser": "^3.9.8",
+    "pdf-parse": "^2.4.5",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  }
+}

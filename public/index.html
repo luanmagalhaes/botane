@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Botané — B2B Operations</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #F5F3EF;
+      --surface: #FFFFFF;
+      --border: #E4DFD7;
+      --text: #1A1916;
+      --text-muted: #7A766E;
+      --green: #3D6B4F;
+      --green-light: #EBF2EE;
+      --green-dark: #2D5039;
+      --accent: #C9A96E;
+      --user-bg: #3D6B4F;
+      --user-text: #FFFFFF;
+      --agent-bg: #FFFFFF;
+      --tag-bg: #F0EDE8;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Header */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text);
+    }
+
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+    }
+
+    .header-badge {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--green);
+      background: var(--green-light);
+      padding: 3px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.3px;
+    }
+
+    /* Main layout */
+    main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* Chat area */
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Messages */
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      scroll-behavior: smooth;
+    }
+
+    .messages::-webkit-scrollbar { width: 4px; }
+    .messages::-webkit-scrollbar-track { background: transparent; }
+    .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* Welcome state */
+    .welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      gap: 16px;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .welcome-flower {
+      width: 64px;
+      height: 64px;
+      opacity: 0.7;
+    }
+
+    .welcome h2 {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .welcome p {
+      font-size: 14px;
+      color: var(--text-muted);
+      max-width: 360px;
+      line-height: 1.6;
+    }
+
+    .suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 8px;
+    }
+
+    .suggestion {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 7px 14px;
+      font-size: 13px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .suggestion:hover {
+      border-color: var(--green);
+      color: var(--green);
+      background: var(--green-light);
+    }
+
+    /* Message bubbles */
+    .message {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: 720px;
+    }
+
+    .message.user { align-self: flex-end; align-items: flex-end; }
+    .message.assistant { align-self: flex-start; align-items: flex-start; }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 600px;
+      white-space: pre-wrap;
+    }
+
+    .bubble table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 8px 0;
+      font-size: 13px;
+      white-space: normal;
+    }
+
+    .bubble table th {
+      background: var(--bg);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .bubble table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: top;
+    }
+
+    .bubble table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .bubble table tr:hover td {
+      background: var(--bg);
+    }
+
+    .message.user .bubble {
+      background: var(--user-bg);
+      color: var(--user-text);
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.assistant .bubble {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+      white-space: normal;
+    }
+
+    /* Agent activity log */
+    .agent-log {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 0 4px;
+    }
+
+    .agent-entry {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .agent-entry .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+
+    .agent-entry.running .dot {
+      background: var(--accent);
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    .agent-entry.done .dot { background: var(--green); }
+    .agent-entry.error .dot { background: #E05252; }
+
+    .agent-entry .name {
+      font-weight: 500;
+      color: var(--text);
+      min-width: 100px;
+    }
+
+    /* Loading flower */
+    .loading-state {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 16px;
+      max-width: 600px;
+    }
+
+    .flower-loader {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .flower-svg {
+      width: 32px;
+      height: 32px;
+      animation: spin 4s linear infinite;
+    }
+
+    .flower-label {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Input area */
+    .input-area {
+      padding: 16px 24px 24px;
+      background: var(--bg);
+      flex-shrink: 0;
+    }
+
+    .input-wrapper {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      padding: 10px 10px 10px 16px;
+      transition: border-color 0.15s;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .input-wrapper:focus-within { border-color: var(--green); }
+
+    textarea {
+      flex: 1;
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      background: transparent;
+      line-height: 1.5;
+      max-height: 120px;
+      min-height: 22px;
+    }
+
+    textarea::placeholder { color: var(--text-muted); }
+
+    .send-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--green);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+
+    .send-btn:hover { background: var(--green-dark); }
+    .send-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+    .send-btn svg { width: 16px; height: 16px; fill: white; }
+
+    /* Animations */
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message { animation: fadeIn 0.2s ease; }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      header { padding: 0 16px; }
+      .messages { padding: 20px 16px; }
+      .input-area { padding: 12px 16px 20px; }
+      .bubble { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">
+      <svg class="logo-icon" viewBox="0 0 28 28" fill="none">
+        <circle cx="14" cy="14" r="13" fill="#EBF2EE"/>
+        <ellipse cx="14" cy="7" rx="3.5" ry="6" fill="#3D6B4F" opacity="0.8"/>
+        <ellipse cx="14" cy="7" rx="3.5" ry="6" fill="#3D6B4F" opacity="0.8" transform="rotate(60 14 14)"/>
+        <ellipse cx="14" cy="7" rx="3.5" ry="6" fill="#3D6B4F" opacity="0.8" transform="rotate(120 14 14)"/>
+        <ellipse cx="14" cy="7" rx="3.5" ry="6" fill="#3D6B4F" opacity="0.5" transform="rotate(180 14 14)"/>
+        <ellipse cx="14" cy="7" rx="3.5" ry="6" fill="#3D6B4F" opacity="0.5" transform="rotate(240 14 14)"/>
+        <ellipse cx="14" cy="7" rx="3.5" ry="6" fill="#3D6B4F" opacity="0.5" transform="rotate(300 14 14)"/>
+        <circle cx="14" cy="14" r="4" fill="#3D6B4F"/>
+      </svg>
+      Botané Operations
+    </div>
+    <span class="header-badge">B2B Platform</span>
+  </header>
+
+  <main>
+    <div class="chat-area">
+      <div class="messages" id="messages">
+        <div class="welcome" id="welcome">
+          <svg class="welcome-flower" viewBox="0 0 64 64" fill="none">
+            <ellipse cx="32" cy="14" rx="7" ry="13" fill="#3D6B4F" opacity="0.7"/>
+            <ellipse cx="32" cy="14" rx="7" ry="13" fill="#3D6B4F" opacity="0.7" transform="rotate(60 32 32)"/>
+            <ellipse cx="32" cy="14" rx="7" ry="13" fill="#3D6B4F" opacity="0.7" transform="rotate(120 32 32)"/>
+            <ellipse cx="32" cy="14" rx="7" ry="13" fill="#3D6B4F" opacity="0.4" transform="rotate(180 32 32)"/>
+            <ellipse cx="32" cy="14" rx="7" ry="13" fill="#3D6B4F" opacity="0.4" transform="rotate(240 32 32)"/>
+            <ellipse cx="32" cy="14" rx="7" ry="13" fill="#3D6B4F" opacity="0.4" transform="rotate(300 32 32)"/>
+            <circle cx="32" cy="32" r="9" fill="#3D6B4F"/>
+          </svg>
+          <h2>Good morning, Camila</h2>
+          <p>Ask me anything about your B2B orders. I can check the inbox, process purchase orders, and create Shopify drafts.</p>
+          <div class="suggestions">
+            <button class="suggestion" onclick="sendSuggestion('Did we have any orders today?')">Did we have any orders today?</button>
+            <button class="suggestion" onclick="sendSuggestion('Process the De Bijenkorf order')">Process the De Bijenkorf order</button>
+            <button class="suggestion" onclick="sendSuggestion('Are there any out of stock items?')">Any out of stock items?</button>
+            <button class="suggestion" onclick="sendSuggestion('What is the total value of today\\'s orders?')">Total value today?</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <div class="input-wrapper">
+          <textarea
+            id="input"
+            placeholder="Ask about your orders..."
+            rows="1"
+            onkeydown="handleKey(event)"
+            oninput="autoResize(this)"
+          ></textarea>
+          <button class="send-btn" id="send-btn" onclick="sendMessage()">
+            <svg viewBox="0 0 16 16"><path d="M1 8L14 1l-4 7 4 7z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const sessionId = Math.random().toString(36).substring(2, 11);
+    let sse = null;
+    let isProcessing = false;
+    let currentAgentEl = null;
+    let currentBubbleEl = null;
+    let currentBubbleText = '';
+
+    function parseMarkdown(text) {
+      const lines = text.split('\n');
+      const output = [];
+      let i = 0;
+
+      while (i < lines.length) {
+        const line = lines[i];
+
+        // Detect markdown table (line with pipes)
+        if (/^\|.+\|$/.test(line.trim()) && lines[i + 1] && /^\|[-| :]+\|$/.test(lines[i + 1].trim())) {
+          const headers = line.trim().slice(1, -1).split('|').map(h => h.trim());
+          i += 2; // skip header + separator
+          const rows = [];
+          while (i < lines.length && /^\|.+\|$/.test(lines[i].trim())) {
+            const cells = lines[i].trim().slice(1, -1).split('|').map(c => c.trim());
+            rows.push(cells);
+            i++;
+          }
+          let table = '<table><thead><tr>';
+          headers.forEach(h => { table += `<th>${inlineMarkdown(h)}</th>`; });
+          table += '</tr></thead><tbody>';
+          rows.forEach(row => {
+            table += '<tr>';
+            row.forEach(cell => { table += `<td>${inlineMarkdown(cell)}</td>`; });
+            table += '</tr>';
+          });
+          table += '</tbody></table>';
+          output.push(table);
+          continue;
+        }
+
+        // Regular line
+        output.push(inlineMarkdown(escapeHtmlInner(line)));
+        i++;
+      }
+
+      return output.join('<br>');
+    }
+
+    function escapeHtmlInner(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function inlineMarkdown(str) {
+      return escapeHtmlInner(str)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`(.+?)`/g, '<code>$1</code>');
+    }
+
+    const agentLabels = {
+      read_inbox: 'Reading inbox',
+      get_email: 'Reading email',
+      parse_purchase_order: 'Parsing purchase order',
+      check_stock: 'Checking stock',
+      create_shopify_draft: 'Building Shopify draft',
+      verify_order_total: 'Verifying total',
+      inbox_reader: 'Inbox',
+      classifier: 'Classifier',
+      po_parser: 'PO Parser',
+      stock_checker: 'Stock Checker',
+      order_builder: 'Order Builder',
+      notifier: 'Notifier',
+    };
+
+    function connectSSE() {
+      sse = new EventSource(`/api/stream?sessionId=${sessionId}`);
+
+      sse.onmessage = (e) => {
+        const event = JSON.parse(e.data);
+        handleSSEEvent(event);
+      };
+
+      sse.onerror = () => {
+        setTimeout(connectSSE, 2000);
+      };
+    }
+
+    function handleSSEEvent(event) {
+      switch (event.type) {
+        case 'agent_start':
+          showAgentStart(event.agent);
+          break;
+        case 'agent_log':
+          showAgentLog(event.agent, event.content);
+          break;
+        case 'agent_done':
+          showAgentDone(event.agent);
+          break;
+        case 'message_chunk':
+          appendChunk(event.content);
+          break;
+        case 'message_done':
+          finishMessage();
+          break;
+        case 'error':
+          showError(event.content);
+          break;
+      }
+    }
+
+    function showAgentStart(agentName) {
+      if (!currentAgentEl) return;
+      const log = currentAgentEl.querySelector('.agent-log');
+      const entry = document.createElement('div');
+      entry.className = 'agent-entry running';
+      entry.dataset.agent = agentName;
+      entry.innerHTML = `
+        <span class="dot"></span>
+        <span class="name">${agentLabels[agentName] || agentName}</span>
+        <span class="content"></span>
+      `;
+      log.appendChild(entry);
+      scrollToBottom();
+    }
+
+    function showAgentLog(agentName, content) {
+      if (!currentAgentEl) return;
+      const log = currentAgentEl.querySelector('.agent-log');
+      const entries = log.querySelectorAll('.agent-entry');
+      // Find last running entry for this agent
+      let found = null;
+      entries.forEach(e => {
+        if (e.dataset.agent === agentName && e.classList.contains('running')) {
+          found = e;
+        }
+      });
+      if (found) {
+        found.querySelector('.content').textContent = content;
+      }
+      scrollToBottom();
+    }
+
+    function showAgentDone(agentName) {
+      if (!currentAgentEl) return;
+      const log = currentAgentEl.querySelector('.agent-log');
+      const entries = log.querySelectorAll('.agent-entry');
+      entries.forEach(e => {
+        if (e.dataset.agent === agentName && e.classList.contains('running')) {
+          e.classList.remove('running');
+          e.classList.add('done');
+        }
+      });
+    }
+
+    function appendChunk(text) {
+      if (!currentBubbleEl) {
+        // Remove loading state and create response bubble
+        if (currentAgentEl) {
+          const loader = currentAgentEl.querySelector('.flower-loader');
+          if (loader) loader.remove();
+        }
+        currentBubbleEl = document.createElement('div');
+        currentBubbleEl.className = 'bubble';
+        if (currentAgentEl) {
+          currentAgentEl.appendChild(currentBubbleEl);
+        }
+      }
+      currentBubbleText += text;
+      currentBubbleEl.innerHTML = parseMarkdown(currentBubbleText);
+      scrollToBottom();
+    }
+
+    function finishMessage() {
+      currentAgentEl = null;
+      currentBubbleEl = null;
+      currentBubbleText = '';
+      setProcessing(false);
+    }
+
+    function showError(msg) {
+      if (currentAgentEl) {
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.style.color = '#E05252';
+        bubble.textContent = 'Something went wrong: ' + msg;
+        currentAgentEl.appendChild(bubble);
+      }
+      finishMessage();
+    }
+
+    function addUserMessage(text) {
+      const welcome = document.getElementById('welcome');
+      if (welcome) welcome.remove();
+
+      const messages = document.getElementById('messages');
+      const msg = document.createElement('div');
+      msg.className = 'message user';
+      msg.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
+      messages.appendChild(msg);
+      scrollToBottom();
+    }
+
+    function addAssistantLoading() {
+      const messages = document.getElementById('messages');
+      const msg = document.createElement('div');
+      msg.className = 'message assistant';
+      msg.innerHTML = `
+        <div class="loading-state">
+          <div class="flower-loader">
+            <svg class="flower-svg" viewBox="0 0 32 32" fill="none">
+              <ellipse cx="16" cy="6" rx="4" ry="7" fill="#3D6B4F" opacity="0.8"/>
+              <ellipse cx="16" cy="6" rx="4" ry="7" fill="#3D6B4F" opacity="0.8" transform="rotate(60 16 16)"/>
+              <ellipse cx="16" cy="6" rx="4" ry="7" fill="#3D6B4F" opacity="0.8" transform="rotate(120 16 16)"/>
+              <ellipse cx="16" cy="6" rx="4" ry="7" fill="#3D6B4F" opacity="0.4" transform="rotate(180 16 16)"/>
+              <ellipse cx="16" cy="6" rx="4" ry="7" fill="#3D6B4F" opacity="0.4" transform="rotate(240 16 16)"/>
+              <ellipse cx="16" cy="6" rx="4" ry="7" fill="#3D6B4F" opacity="0.4" transform="rotate(300 16 16)"/>
+              <circle cx="16" cy="16" r="5" fill="#3D6B4F"/>
+            </svg>
+            <span class="flower-label">Working on it...</span>
+          </div>
+          <div class="agent-log"></div>
+        </div>
+      `;
+      messages.appendChild(msg);
+      currentAgentEl = msg.querySelector('.loading-state');
+      scrollToBottom();
+      return msg;
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('input');
+      const text = input.value.trim();
+      if (!text || isProcessing) return;
+
+      input.value = '';
+      autoResize(input);
+      setProcessing(true);
+
+      addUserMessage(text);
+      addAssistantLoading();
+
+      try {
+        await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, sessionId }),
+        });
+      } catch (err) {
+        showError('Could not reach the server');
+      }
+    }
+
+    function sendSuggestion(text) {
+      const input = document.getElementById('input');
+      input.value = text;
+      sendMessage();
+    }
+
+    function handleKey(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    }
+
+    function autoResize(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    }
+
+    function setProcessing(val) {
+      isProcessing = val;
+      const btn = document.getElementById('send-btn');
+      btn.disabled = val;
+    }
+
+    function scrollToBottom() {
+      const messages = document.getElementById('messages');
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Start SSE connection
+    connectSSE();
+  </script>
+</body>
+</html>
