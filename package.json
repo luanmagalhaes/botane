@@ -4,8 +4,6 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "tsx src/index.ts",
-    "tools": "tsx src/tools.ts",
     "dev": "tsx src/server.ts"
   },
   "keywords": [],
