@@ -1,7 +1,7 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser, ParsedMail } from "mailparser";
-import pdfParse from "pdf-parse";
 import type { MockEmail, EmailType, Partner } from "./types.js";
+import { extractTextFromBuffer } from "../services/customParser.js";
 
 const GMAIL_USER = process.env.GMAIL_USER!;
 const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD!;
@@ -37,18 +37,12 @@ function detectType(subject: string, body: string): EmailType {
   return "unknown";
 }
 
-async function extractAttachmentText(content: Buffer, filename: string): Promise<string> {
-  const name = filename.toLowerCase();
-  if (name.endsWith(".pdf")) {
-    try {
-      const data = await pdfParse(content);
-      return data.text.trim();
-    } catch {
-      return "";
-    }
-  }
-  // For text-based files (csv, txt, etc.)
-  return content.toString("utf-8");
+async function extractAttachmentText(content: Buffer, filename: string): Promise<{
+    text: string;
+    rawBuffer?: Buffer;
+    isPdf: boolean;
+}> {
+  return await extractTextFromBuffer(content, filename);
 }
 
 async function parseEmail(message: { uid: number; source: Buffer }): Promise<MockEmail | null> {

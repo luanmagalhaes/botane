@@ -17,6 +17,7 @@ const AGENT_LABELS: Record<string, string> = {
   po_parser: "Parsing order",
   stock_checker: "Checking stock",
   order_builder: "Building order",
+  extract_structured_order_data: "Order extraction",
 };
 
 function makeId() {
