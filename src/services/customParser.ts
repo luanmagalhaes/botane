@@ -13,6 +13,7 @@ Your task is to extract:
 Each item must contain:
 - price (number, use dot as decimal separator, no currency symbols)
 - currency (ISO 4217 format: EUR, USD, DKK, SEK, NOK, GBP, PLN only)
+- quantity (number)
 - ean_or_sku (string, preserve exactly as found)
 
 The input may contain multiple languages and multiple sources:
@@ -51,6 +52,7 @@ Output format:
     {
       "price": number | null,
       "currency": string | null,
+      "quantity": number | null,
       "ean_or_sku": string | null
     }
   ]
