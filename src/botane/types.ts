@@ -24,6 +24,7 @@ export type AgentName =
 export interface EmailAttachment {
   name: string;
   content: string;
+  rawBuffer?: Buffer;
 }
 
 export interface MockEmail {

@@ -1,7 +1,6 @@
-// src/services/customParser.ts
 import Anthropic from "@anthropic-ai/sdk";
 import * as xlsx from "xlsx";
-import type { SSEEmitter } from "../botane/types.js";
+import type { SSEEmitter, EmailAttachment } from "../botane/types.js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -58,7 +57,8 @@ Output format:
 }`;
 
 /**
- * Parses raw Buffers to extract text from PDFs, Excel sheets, and plain text
+ * Parses raw Buffers to extract text from PDFs, Excel sheets, and plain text.
+ * For PDFs, returns empty text + rawBuffer so the caller can send it to the API directly.
  */
 export async function extractTextFromBuffer(
   buffer: Buffer,
@@ -67,7 +67,6 @@ export async function extractTextFromBuffer(
   const name = filename.toLowerCase();
 
   if (name.endsWith(".pdf")) {
-    // Não extrai texto — retorna o buffer para envio direto à API
     return { text: "", rawBuffer: buffer, isPdf: true };
   }
 
@@ -81,7 +80,7 @@ export async function extractTextFromBuffer(
         sheetsData.push(`--- Sheet: ${sheetName} ---\n${sheetCsv}`);
       }
       return { text: sheetsData.join("\n\n").trim(), isPdf: false };
-    } catch (e) {
+    } catch {
       return { text: "", isPdf: false };
     }
   }
@@ -89,121 +88,102 @@ export async function extractTextFromBuffer(
   return { text: buffer.toString("utf-8"), isPdf: false };
 }
 
+function buildAttachmentContent(
+  attachment: EmailAttachment,
+  emit: SSEEmitter
+): Anthropic.ContentBlockParam | null {
+  const name = attachment.name.toLowerCase();
+
+  if (name.endsWith(".pdf") && attachment.rawBuffer) {
+    emit({ type: "agent_log", agent: "po_parser", content: `Sending PDF to Claude: ${attachment.name}` });
+    return {
+      type: "document",
+      source: {
+        type: "base64",
+        media_type: "application/pdf",
+        data: attachment.rawBuffer.toString("base64"),
+      },
+    };
+  }
+
+  if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) {
+    if (attachment.content) {
+      emit({ type: "agent_log", agent: "po_parser", content: `Reading Excel: ${attachment.name}` });
+      return {
+        type: "text",
+        text: `--- ATTACHMENT (${attachment.name}) - SPREADSHEET DATA ---\nExtract ALL items from this data.\n\n${attachment.content}`,
+      };
+    }
+    return null;
+  }
+
+  if (attachment.content) {
+    return {
+      type: "text",
+      text: `--- ATTACHMENT (${attachment.name}) ---\n${attachment.content}`,
+    };
+  }
+
+  return null;
+}
+
 /**
- * Custom Extraction Tool
+ * Custom extraction tool — reads email + attachment and extracts structured order data.
  */
 export async function toolExtractCustomData(
   emailId: string,
   fetchEmailFn: (id: string) => Promise<any>,
   emit: SSEEmitter
 ): Promise<string> {
-  emit({ type: "agent_log", agent: "po_parser", content: "Extracting specific items using custom rules..." });
+  emit({ type: "agent_log", agent: "po_parser", content: "Extracting structured order data..." });
 
   try {
     const email = await fetchEmailFn(emailId);
     if (!email) return JSON.stringify({ error: `Email ${emailId} not found` });
-    const emailText = [
-      `From: ${email.from}`,
-      `Subject: ${email.subject}`,
-      `Body:\n${email.body}`,
-    ].join("\n");
 
-    const userContent: any[] = [
+    const userContent: Anthropic.ContentBlockParam[] = [
       {
         type: "text",
-        text: `
-          You must extract structured order data from the following sources:
+        text: `Extract structured order data from the following sources:
 
-          1. Email content
-          2. Attachments (VERY IMPORTANT — prioritize these)
+1. Email content
+2. Attachments (prioritize these if present)
 
-          If an attachment (PDF or Excel) contains structured data, you MUST use it as the primary source.
+Return ONLY valid JSON.
 
-          Return ONLY valid JSON.
-
-          --- EMAIL CONTENT ---
-          ${emailText}
-          `,
+--- EMAIL CONTENT ---
+From: ${email.from}
+Subject: ${email.subject}
+Body:
+${email.body}`,
       },
     ];
 
-    const attachmentData = email.attachment?.rawBuffer || email.attachment?.content || email.attachment?.data;
-
-    if (attachmentData) {
-      const { name, rawBuffer } = email.attachment;
-      emit({ type: "agent_log", agent: "po_parser", content: `Reading attachment: ${name}...` });
-
-      const nameLower = name.trim().toLowerCase();
-      if (nameLower.endsWith(".pdf")) {
-        try {
-          emit({ type: "agent_log", agent: "po_parser", content: "Sending PDF directly to Claude..." });
-          userContent.push({
-            type: "document",
-            source: {
-              type: "base64",
-              media_type: "application/pdf",
-              data: email.attachment.content.rawBuffer.toString("base64"),
-            },
-          });
-        } catch (e) {
-          emit({ type: "agent_log", agent: "po_parser", content: `Error reading PDF text: ${name}` });
-        }
-      } else if (
-        nameLower.endsWith(".xlsx") ||
-        nameLower.endsWith(".xls") ||
-        nameLower.endsWith(".csv")
-      ) {
-        try {
-          const workbook = xlsx.read(rawBuffer, { type: "buffer" });
-          const sheetsData = workbook.SheetNames.map((sheetName) => {
-            const sheet = workbook.Sheets[sheetName];
-            return `--- Sheet: ${sheetName} ---\n${xlsx.utils.sheet_to_csv(sheet)}`;
-          });
-          userContent.push({
-            type: "text",
-            text: `
-              --- ATTACHMENT (${name}) - EXCEL DATA ---
-              This file contains structured rows of products.
-
-              Each row represents a product.
-
-              Extract ALL items from this data.
-
-              ${sheetsData.join("\n\n")}
-              `,
-          });
-        } catch (e) {
-          emit({ type: "agent_log", agent: "po_parser", content: `Warning: could not parse Excel file: ${name}` });
-        }
-      } else {
-        userContent.push({
-          type: "text",
-          text: `\n--- ATTACHMENT CONTENT (${name}) ---\n${rawBuffer.toString("utf-8")}`,
-        });
-      }
+    if (email.attachment) {
+      const block = buildAttachmentContent(email.attachment, emit);
+      if (block) userContent.push(block);
     }
 
     const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 4096,
       temperature: 0,
       system: EXTRACTION_SYSTEM_PROMPT,
       messages: [{ role: "user", content: userContent }],
     });
 
-    const textBlock = response.content.find(b => b.type === "text");
-    const text = textBlock && "text" in textBlock ? textBlock.text : "";
-    let orderData;
-    try {
-      orderData = JSON.parse(text);
-    } catch {
-      return JSON.stringify({ error: "Invalid JSON returned", raw: text });
-    }
+    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
+    const text = textBlock?.text ?? "";
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return JSON.stringify({ error: "Invalid JSON returned", raw: text });
+
+    const orderData = JSON.parse(jsonMatch[0]);
 
     emit({
       type: "agent_log",
       agent: "po_parser",
-      content: `Custom Parse Success: found ${orderData.items?.length || 0} items for client ${orderData.client_name || "Unknown"}`,
+      content: `Extracted ${orderData.items?.length ?? 0} items for client ${orderData.client_name ?? "Unknown"}`,
     });
 
     return JSON.stringify(orderData);
