@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { STOCK_DATA } from "./mock-data.js";
 import { fetchInbox, fetchEmail } from "./gmail.js";
 import type {
   SSEEmitter,
@@ -8,11 +7,14 @@ import type {
   ParsedOrder,
 } from "./types.js";
 import { toolExtractCustomData } from "../services/customParser.js";
-import { createShopifyDraftOrder } from "../services/shopify.js";
+import {
+  createShopifyDraftOrder,
+  getVariantBySku,
+  resetVariantCache,
+} from "../services/shopify.js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// In-memory cache for parsed orders during a session
 const parsedOrderCache = new Map<string, ParsedOrder>();
 
 const SYSTEM_PROMPT = `You are the B2B Operations Agent for Botané Studios, a premium botanical design brand based in Copenhagen, Denmark.
@@ -32,6 +34,8 @@ When the user asks a question:
 6. Use verify_order_total to confirm the draft matches the original PO
 
 IMPORTANT: This inbox is connected to a real Gmail account. When listing emails, always show the REAL sender email address (the "from" field) in your response. Do not hide or replace sender addresses. Show the actual data from the inbox.
+
+Stock and draft orders are backed by the real Shopify Admin API. When a SKU is missing in Shopify or inventory is insufficient, surface that to the user exactly as the tool reports it.
 
 Be concise, professional, and business-focused. Format currency values clearly.
 When something is out of stock, clearly flag it. Never create an order without checking stock first.`;
@@ -76,7 +80,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "check_stock",
     description:
-      "Check current stock availability for all items in a parsed order. Returns in-stock status and restock dates for out-of-stock items.",
+      "Check current stock availability in Shopify for every item in the parsed order. Returns in-stock status, available quantity per SKU, and flags SKUs that do not exist in the Shopify catalog.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -91,7 +95,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "create_shopify_draft",
     description:
-      "Create a draft order in Shopify from a parsed and stock-verified purchase order. Returns the draft order details ready for human review.",
+      "Create a real draft order in Shopify using the Admin API. Only in-stock items are included. Returns the Shopify draft order ID and invoice URL ready for human review inside Shopify.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -134,8 +138,6 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
 ];
-
-// --- Tool implementations ---
 
 async function toolReadInbox(emit: SSEEmitter): Promise<string> {
   emit({ type: "agent_log", agent: "inbox_reader", content: "Connecting to Gmail..." });
@@ -181,7 +183,6 @@ async function toolGetEmail(emailId: string, emit: SSEEmitter): Promise<string> 
 async function toolParsePurchaseOrder(emailId: string, emit: SSEEmitter): Promise<string> {
   emit({ type: "agent_log", agent: "po_parser", content: "Reading purchase order..." });
 
-  // Return from cache if already parsed
   const cached = parsedOrderCache.get(emailId);
   if (cached) {
     emit({ type: "agent_log", agent: "po_parser", content: `PO ${cached.po_number} (from cache)` });
@@ -196,7 +197,6 @@ async function toolParsePurchaseOrder(emailId: string, emit: SSEEmitter): Promis
       return JSON.stringify({ error: "This email does not contain a purchase order" });
     }
 
-    // Build the text content to parse
     const content = [
       `From: ${email.from}`,
       `Subject: ${email.subject}`,
@@ -240,13 +240,10 @@ Return ONLY the JSON, no explanation.`,
 
     const text = response.content.find((b) => b.type === "text")?.text ?? "";
 
-    // Extract JSON from the response (strip markdown code fences if present)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return JSON.stringify({ error: "Could not parse order data from email" });
 
     const order: ParsedOrder = JSON.parse(jsonMatch[0]);
-
-    // Store in cache
     parsedOrderCache.set(emailId, order);
 
     emit({ type: "agent_log", agent: "po_parser", content: `PO ${order.po_number} — ${order.items.length} line items — ${order.currency} ${order.total.toLocaleString()}` });
@@ -258,120 +255,104 @@ Return ONLY the JSON, no explanation.`,
   }
 }
 
-function toolCheckStock(emailId: string, emit: SSEEmitter): string {
-  emit({ type: "agent_log", agent: "stock_checker", content: "Checking stock availability..." });
+async function toolCheckStock(emailId: string, emit: SSEEmitter): Promise<string> {
+  emit({ type: "agent_log", agent: "stock_checker", content: "Checking Shopify inventory..." });
 
   const order = parsedOrderCache.get(emailId);
   if (!order) return JSON.stringify({ error: "Order not found. Call parse_purchase_order first." });
 
-  const results = order.items.map((item) => {
-    const stock = STOCK_DATA[item.sku];
-    const available = stock?.available ?? 0;
+  const results: Array<{
+    sku: string;
+    name: string;
+    quantity_requested: number;
+    available: number;
+    in_stock: boolean;
+    exists_in_shopify: boolean;
+  }> = [];
+
+  for (const item of order.items) {
+    const variant = await getVariantBySku(item.sku);
+    if (!variant) {
+      emit({ type: "agent_log", agent: "stock_checker", content: `SKU not found in Shopify: ${item.sku}` });
+      results.push({
+        sku: item.sku,
+        name: item.name,
+        quantity_requested: item.quantity,
+        available: 0,
+        in_stock: false,
+        exists_in_shopify: false,
+      });
+      continue;
+    }
+
+    const available = variant.inventoryQuantity;
     const in_stock = available >= item.quantity;
 
     if (!in_stock) {
       emit({ type: "agent_log", agent: "stock_checker", content: `Out of stock: ${item.name} (need ${item.quantity}, have ${available})` });
     }
 
-    return {
+    results.push({
       sku: item.sku,
       name: item.name,
       quantity_requested: item.quantity,
       available,
       in_stock,
-      restock_date: in_stock ? undefined : stock?.restock_date,
-    };
-  });
+      exists_in_shopify: true,
+    });
+  }
 
   const oos = results.filter((r) => !r.in_stock);
   if (oos.length === 0) {
-    emit({ type: "agent_log", agent: "stock_checker", content: "All items in stock ✓" });
+    emit({ type: "agent_log", agent: "stock_checker", content: "All items in stock" });
   } else {
-    emit({ type: "agent_log", agent: "stock_checker", content: `${oos.length} item(s) out of stock` });
+    emit({ type: "agent_log", agent: "stock_checker", content: `${oos.length} item(s) unavailable` });
   }
 
   return JSON.stringify(results);
 }
 
-// function toolCreateShopifyDraft(emailId: string, emit: SSEEmitter): string {
-//   emit({ type: "agent_log", agent: "order_builder", content: "Building Shopify draft order..." });
-
-//   const order: ParsedOrder | undefined = parsedOrderCache.get(emailId);
-//   if (!order) return JSON.stringify({ error: "Order not found. Call parse_purchase_order first." });
-
-//   const draftItems: ShopifyDraftItem[] = order.items.map((item) => {
-//     const stock = STOCK_DATA[item.sku];
-//     const available = stock?.available ?? 0;
-//     const in_stock = available >= item.quantity;
-//     return {
-//       ...item,
-//       in_stock,
-//       available,
-//       restock_date: in_stock ? undefined : stock?.restock_date,
-//     };
-//   });
-
-//   const inStock = draftItems.filter((i) => i.in_stock);
-//   const oos = draftItems.filter((i) => !i.in_stock);
-//   const draftTotal = inStock.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
-
-//   const draft: ShopifyDraft = {
-//     draft_id: `DRAFT-${order.po_number}-${Date.now()}`,
-//     partner: order.partner,
-//     po_number: order.po_number,
-//     items: draftItems,
-//     items_in_stock: inStock,
-//     items_oos: oos,
-//     total: Math.round(draftTotal * 100) / 100,
-//     currency: order.currency,
-//     verified: false,
-//     created_at: new Date().toISOString(),
-//   };
-
-//   emit({ type: "agent_log", agent: "order_builder", content: `Draft created: ${inStock.length} items, ${order.currency} ${draft.total.toLocaleString()}` });
-//   if (oos.length > 0) {
-//     emit({ type: "agent_log", agent: "order_builder", content: `${oos.length} item(s) excluded (out of stock)` });
-//   }
-
-//   return JSON.stringify(draft);
-// }
+async function buildDraftItems(order: ParsedOrder): Promise<ShopifyDraftItem[]> {
+  const items: ShopifyDraftItem[] = [];
+  for (const item of order.items) {
+    const variant = await getVariantBySku(item.sku);
+    const available = variant?.inventoryQuantity ?? 0;
+    const in_stock = !!variant && available >= item.quantity;
+    items.push({
+      ...item,
+      in_stock,
+      available,
+    });
+  }
+  return items;
+}
 
 async function toolCreateShopifyDraft(emailId: string, emit: SSEEmitter): Promise<string> {
   emit({ type: "agent_log", agent: "order_builder", content: "Building Shopify draft order..." });
 
-  const order: ParsedOrder | undefined = parsedOrderCache.get(emailId);
+  const order = parsedOrderCache.get(emailId);
   if (!order) return JSON.stringify({ error: "Order not found. Call parse_purchase_order first." });
 
-  const draftItems: ShopifyDraftItem[] = order.items.map((item) => {
-    const stock = STOCK_DATA[item.sku];
-    const available = stock?.available ?? 0;
-    const in_stock = available >= item.quantity;
-    return {
-      ...item,
-      in_stock,
-      available,
-      restock_date: in_stock ? undefined : stock?.restock_date,
-    };
-  });
-
+  const draftItems = await buildDraftItems(order);
   const inStock = draftItems.filter((i) => i.in_stock);
   const oos = draftItems.filter((i) => !i.in_stock);
   const draftTotal = inStock.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
 
   if (inStock.length === 0) {
+    emit({ type: "agent_log", agent: "order_builder", content: "No items in stock — cannot create draft." });
     return JSON.stringify({ error: "No items are in stock, unable to create draft order." });
   }
 
-  emit({ type: "agent_log", agent: "order_builder", content: "Connecting to Shopify API..." });
+  emit({ type: "agent_log", agent: "order_builder", content: "Connecting to Shopify Admin API..." });
   const shopifyResult = await createShopifyDraftOrder(inStock, order.partner);
 
   if (!shopifyResult.success) {
-    emit({ type: "agent_log", agent: "order_builder", content: "Shopify API validation failed." });
+    emit({ type: "agent_log", agent: "order_builder", content: "Shopify draft creation failed." });
     return JSON.stringify({ error: shopifyResult.error });
   }
 
   const draft: ShopifyDraft = {
-    draft_id: shopifyResult.draftOrderId?.toString() || `DRAFT-${order.po_number}-${Date.now()}`,
+    draft_id: shopifyResult.draftOrderId.toString(),
     partner: order.partner,
     po_number: order.po_number,
     items: draftItems,
@@ -381,7 +362,7 @@ async function toolCreateShopifyDraft(emailId: string, emit: SSEEmitter): Promis
     currency: order.currency,
     verified: false,
     created_at: new Date().toISOString(),
-    shopify_invoice_url: shopifyResult.invoiceUrl
+    shopify_invoice_url: shopifyResult.invoiceUrl,
   };
 
   emit({ type: "agent_log", agent: "order_builder", content: `Draft created in Shopify: #${shopifyResult.draftOrderId}` });
@@ -392,30 +373,23 @@ async function toolCreateShopifyDraft(emailId: string, emit: SSEEmitter): Promis
   return JSON.stringify(draft);
 }
 
-function toolVerifyOrderTotal(emailId: string, emit: SSEEmitter): string {
+async function toolVerifyOrderTotal(emailId: string, emit: SSEEmitter): Promise<string> {
   emit({ type: "agent_log", agent: "order_builder", content: "Verifying order total..." });
 
   const order = parsedOrderCache.get(emailId);
   if (!order) return JSON.stringify({ error: "Order not found." });
 
-  const inStockItems = order.items.filter((item) => {
-    const stock = STOCK_DATA[item.sku];
-    return (stock?.available ?? 0) >= item.quantity;
-  });
+  const draftItems = await buildDraftItems(order);
+  const inStockItems = draftItems.filter((i) => i.in_stock);
+  const oosItems = draftItems.filter((i) => !i.in_stock);
 
-  const draftTotal = Math.round(
-    inStockItems.reduce((sum, i) => sum + i.quantity * i.unit_price, 0) * 100
-  ) / 100;
-
-  const oosItems = order.items.filter((item) => {
-    const stock = STOCK_DATA[item.sku];
-    return (stock?.available ?? 0) < item.quantity;
-  });
+  const draftTotal =
+    Math.round(inStockItems.reduce((sum, i) => sum + i.quantity * i.unit_price, 0) * 100) / 100;
 
   const match = oosItems.length === 0 && Math.abs(draftTotal - order.total) < 0.01;
 
   if (match) {
-    emit({ type: "agent_log", agent: "order_builder", content: `Total verified ✓ — ${order.currency} ${draftTotal.toLocaleString()}` });
+    emit({ type: "agent_log", agent: "order_builder", content: `Total verified — ${order.currency} ${draftTotal.toLocaleString()}` });
   } else if (oosItems.length > 0) {
     emit({ type: "agent_log", agent: "order_builder", content: `Total adjusted: ${oosItems.length} out-of-stock items excluded` });
   }
@@ -426,13 +400,12 @@ function toolVerifyOrderTotal(emailId: string, emit: SSEEmitter): string {
     currency: order.currency,
     match,
     oos_items: oosItems.length,
-    note: oosItems.length > 0
-      ? "Draft total is lower than PO total due to out-of-stock items. Human review required."
-      : "Totals match exactly.",
+    note:
+      oosItems.length > 0
+        ? "Draft total is lower than PO total due to out-of-stock items. Human review required."
+        : "Totals match exactly.",
   });
 }
-
-// --- Tool dispatcher ---
 
 async function runTool(
   name: string,
@@ -447,11 +420,11 @@ async function runTool(
     case "parse_purchase_order":
       return await toolParsePurchaseOrder(input.email_id, emit);
     case "check_stock":
-      return toolCheckStock(input.email_id, emit);
+      return await toolCheckStock(input.email_id, emit);
     case "create_shopify_draft":
       return await toolCreateShopifyDraft(input.email_id, emit);
     case "verify_order_total":
-      return toolVerifyOrderTotal(input.email_id, emit);
+      return await toolVerifyOrderTotal(input.email_id, emit);
     case "extract_structured_order_data":
       return await toolExtractCustomData(input.email_id, fetchEmail, emit);
     default:
@@ -459,12 +432,12 @@ async function runTool(
   }
 }
 
-// --- Orchestrator ---
-
 export async function runOrchestrator(
   userMessage: string,
   emit: SSEEmitter
 ): Promise<void> {
+  resetVariantCache();
+
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userMessage },
   ];
@@ -520,7 +493,6 @@ export async function runOrchestrator(
     });
   }
 
-  // Stream final text response word by word
   const textBlock = response.content.find(
     (b): b is Anthropic.TextBlock => b.type === "text"
   );

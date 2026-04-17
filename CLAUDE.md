@@ -47,7 +47,7 @@ cd frontend && npm run dev
 - `src/botane/pipeline.ts` — Agent orchestrator, tool definitions, tool loop
 - `src/botane/gmail.ts` — IMAP connection, email fetching, attachment extraction
 - `src/botane/types.ts` — All TypeScript interfaces
-- `src/botane/mock-data.ts` — Stock data (only mock left, pending Shopify API)
+- `src/services/shopify.ts` — Shopify Admin API client (stock lookup + draft order creation)
 - `src/services/customParser.ts` — PDF/Excel extraction tool using Claude
 - `frontend/components/chat/` — Chat UI components (ChatWindow, MessageBubble, AgentLog, ChatInput)
 - `frontend/lib/useChat.ts` — SSE hook and message state management

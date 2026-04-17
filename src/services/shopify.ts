@@ -1,21 +1,61 @@
 import type { ShopifyDraftItem } from "../botane/types.js";
 
 const SHOPIFY_STORE_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
-const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN!;
-const API_VERSION = "2026-04";
+const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+const API_VERSION = "2024-10";
+
+export interface VariantInfo {
+  variantId: string;
+  inventoryQuantity: number;
+}
+
+const variantCache = new Map<string, VariantInfo | null>();
+
+export function resetVariantCache(): void {
+  variantCache.clear();
+}
+
+async function shopifyGraphQL<T = any>(query: string): Promise<T> {
+  if (!SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN) {
+    throw new Error("Shopify credentials missing. Set SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.");
+  }
+
+  const response = await fetch(
+    `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${API_VERSION}/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+      },
+      body: JSON.stringify({ query }),
+    }
+  );
+
+  const data = await response.json();
+  if (data.errors) {
+    throw new Error(`Shopify GraphQL error: ${JSON.stringify(data.errors)}`);
+  }
+  return data.data;
+}
 
 /**
- * Procura um produto no Shopify pelo SKU (via GraphQL) para obter o Variant ID real.
- * O Shopify Draft Order API exige o variant_id para vincular os produtos corretamente,
- * senão acabaria criando "custom line items" desconectados do estoque.
+ * Look up a product variant by SKU. Returns the variant ID (numeric, from the GID) and
+ * the current inventory quantity. Results are cached per session so multiple tools
+ * hitting the same SKUs do not trigger duplicate API calls.
  */
-async function getVariantIdBySku(sku: string): Promise<string | null> {
+export async function getVariantBySku(sku: string): Promise<VariantInfo | null> {
+  if (variantCache.has(sku)) {
+    return variantCache.get(sku)!;
+  }
+
   const query = `
     {
-      productVariants(first: 1, query: "sku:'${sku}'") {
+      productVariants(first: 1, query: "sku:'${sku.replace(/'/g, "\\'")}'") {
         edges {
           node {
             id
+            inventoryQuantity
           }
         }
       }
@@ -23,66 +63,61 @@ async function getVariantIdBySku(sku: string): Promise<string | null> {
   `;
 
   try {
-    const response = await fetch(`https://${SHOPIFY_STORE_DOMAIN}/admin/api/${API_VERSION}/graphql.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-      },
-      body: JSON.stringify({ query }),
-    });
-
-    const data = await response.json();
-    
-    if (data.errors) {
-      console.error("Shopify GraphQL Error:", data.errors);
+    const data = await shopifyGraphQL<{ productVariants: { edges: Array<{ node: { id: string; inventoryQuantity: number | null } }> } }>(query);
+    const edges = data?.productVariants?.edges ?? [];
+    if (edges.length === 0) {
+      variantCache.set(sku, null);
       return null;
     }
 
-    const edges = data?.data?.productVariants?.edges || [];
-    if (edges.length === 0) return null;
-
-    // GraphQL retorna GIDs no formato: "gid://shopify/ProductVariant/123456"
-    const gid = edges[0].node.id;
-    return gid.split("/").pop() || null;
-  } catch (error) {
-    console.error("Failed to fetch variant by SKU:", error);
+    const node = edges[0].node;
+    const numericId = node.id.split("/").pop() ?? "";
+    const info: VariantInfo = {
+      variantId: numericId,
+      inventoryQuantity: node.inventoryQuantity ?? 0,
+    };
+    variantCache.set(sku, info);
+    return info;
+  } catch {
+    variantCache.set(sku, null);
     return null;
   }
 }
 
-/**
- * Mapeia os itens em estoque gerados pelo customParser e cria a Draft Order.
- * Informa erro caso os SKUs solicitados não existam na base.
- */
-export async function createShopifyDraftOrder(items: ShopifyDraftItem[], partner: string) {
-  if (!SHOPIFY_ACCESS_TOKEN) {
-    throw new Error("SHOPIFY_ACCESS_TOKEN não está configurado. Verifique as variáveis de ambiente.");
+export async function createShopifyDraftOrder(
+  items: ShopifyDraftItem[],
+  partner: string
+): Promise<
+  | { success: true; draftOrderId: number; invoiceUrl: string }
+  | { success: false; error: string }
+> {
+  if (!SHOPIFY_ACCESS_TOKEN || !SHOPIFY_STORE_DOMAIN) {
+    return {
+      success: false,
+      error: "Shopify credentials missing. Set SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.",
+    };
   }
 
-  const lineItems = [];
+  const lineItems: Array<{ variant_id: number; quantity: number; price: string }> = [];
   const notFoundSkus: string[] = [];
 
-  // Mapeamento: Busca o variant_id real de cada item extraído do PDF
   for (const item of items) {
-    const variantId = await getVariantIdBySku(item.sku);
-
-    if (!variantId) {
+    const variant = await getVariantBySku(item.sku);
+    if (!variant) {
       notFoundSkus.push(item.sku);
     } else {
       lineItems.push({
-        variant_id: parseInt(variantId, 10),
+        variant_id: parseInt(variant.variantId, 10),
         quantity: item.quantity,
-        price: item.unit_price.toString(), // Sobrescreve pelo valor B2B retornado no parser!
+        price: item.unit_price.toString(),
       });
     }
   }
 
-  // Validação: Se algum SKU não existir na loja, interrompemos e alertamos o agente!
   if (notFoundSkus.length > 0) {
     return {
       success: false,
-      error: `Os seguintes SKUs não foram encontrados no Shopify: ${notFoundSkus.join(", ")}. Por favor, alerte o usuário.`,
+      error: `The following SKUs were not found in Shopify: ${notFoundSkus.join(", ")}. Please alert the user.`,
     };
   }
 
@@ -90,27 +125,29 @@ export async function createShopifyDraftOrder(items: ShopifyDraftItem[], partner
     draft_order: {
       line_items: lineItems,
       tags: `B2B, Agent, ${partner}`,
-      note: `B2B Order importada automaticamente pelo Agente. Cliente: ${partner}`,
+      note: `B2B order imported automatically by the agent. Partner: ${partner}`,
     },
   };
 
   try {
-    // Criação: POST via REST API
-    const response = await fetch(`https://${SHOPIFY_STORE_DOMAIN}/admin/api/${API_VERSION}/draft_orders.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-      },
-      body: JSON.stringify(payload),
-    });
+    const response = await fetch(
+      `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${API_VERSION}/draft_orders.json`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+        },
+        body: JSON.stringify(payload),
+      }
+    );
 
     const data = await response.json();
 
     if (!response.ok) {
       return {
         success: false,
-        error: `Shopify API Error: ${JSON.stringify(data.errors || data)}`,
+        error: `Shopify API error: ${JSON.stringify(data.errors || data)}`,
       };
     }
 
@@ -119,10 +156,10 @@ export async function createShopifyDraftOrder(items: ShopifyDraftItem[], partner
       draftOrderId: data.draft_order.id,
       invoiceUrl: data.draft_order.invoice_url,
     };
-  } catch (error) {
+  } catch (err) {
     return {
       success: false,
-      error: `Falha na comunicação com a API do Shopify: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Shopify API request failed: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
 }
