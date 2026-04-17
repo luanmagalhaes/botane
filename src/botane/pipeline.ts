@@ -8,6 +8,7 @@ import type {
   ParsedOrder,
 } from "./types.js";
 import { toolExtractCustomData } from "../services/customParser.js";
+import { createShopifyDraftOrder } from "../services/shopify.js";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -292,7 +293,50 @@ function toolCheckStock(emailId: string, emit: SSEEmitter): string {
   return JSON.stringify(results);
 }
 
-function toolCreateShopifyDraft(emailId: string, emit: SSEEmitter): string {
+// function toolCreateShopifyDraft(emailId: string, emit: SSEEmitter): string {
+//   emit({ type: "agent_log", agent: "order_builder", content: "Building Shopify draft order..." });
+
+//   const order: ParsedOrder | undefined = parsedOrderCache.get(emailId);
+//   if (!order) return JSON.stringify({ error: "Order not found. Call parse_purchase_order first." });
+
+//   const draftItems: ShopifyDraftItem[] = order.items.map((item) => {
+//     const stock = STOCK_DATA[item.sku];
+//     const available = stock?.available ?? 0;
+//     const in_stock = available >= item.quantity;
+//     return {
+//       ...item,
+//       in_stock,
+//       available,
+//       restock_date: in_stock ? undefined : stock?.restock_date,
+//     };
+//   });
+
+//   const inStock = draftItems.filter((i) => i.in_stock);
+//   const oos = draftItems.filter((i) => !i.in_stock);
+//   const draftTotal = inStock.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
+
+//   const draft: ShopifyDraft = {
+//     draft_id: `DRAFT-${order.po_number}-${Date.now()}`,
+//     partner: order.partner,
+//     po_number: order.po_number,
+//     items: draftItems,
+//     items_in_stock: inStock,
+//     items_oos: oos,
+//     total: Math.round(draftTotal * 100) / 100,
+//     currency: order.currency,
+//     verified: false,
+//     created_at: new Date().toISOString(),
+//   };
+
+//   emit({ type: "agent_log", agent: "order_builder", content: `Draft created: ${inStock.length} items, ${order.currency} ${draft.total.toLocaleString()}` });
+//   if (oos.length > 0) {
+//     emit({ type: "agent_log", agent: "order_builder", content: `${oos.length} item(s) excluded (out of stock)` });
+//   }
+
+//   return JSON.stringify(draft);
+// }
+
+async function toolCreateShopifyDraft(emailId: string, emit: SSEEmitter): Promise<string> {
   emit({ type: "agent_log", agent: "order_builder", content: "Building Shopify draft order..." });
 
   const order: ParsedOrder | undefined = parsedOrderCache.get(emailId);
@@ -314,8 +358,20 @@ function toolCreateShopifyDraft(emailId: string, emit: SSEEmitter): string {
   const oos = draftItems.filter((i) => !i.in_stock);
   const draftTotal = inStock.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
 
+  if (inStock.length === 0) {
+    return JSON.stringify({ error: "No items are in stock, unable to create draft order." });
+  }
+
+  emit({ type: "agent_log", agent: "order_builder", content: "Connecting to Shopify API..." });
+  const shopifyResult = await createShopifyDraftOrder(inStock, order.partner);
+
+  if (!shopifyResult.success) {
+    emit({ type: "agent_log", agent: "order_builder", content: "Shopify API validation failed." });
+    return JSON.stringify({ error: shopifyResult.error });
+  }
+
   const draft: ShopifyDraft = {
-    draft_id: `DRAFT-${order.po_number}-${Date.now()}`,
+    draft_id: shopifyResult.draftOrderId?.toString() || `DRAFT-${order.po_number}-${Date.now()}`,
     partner: order.partner,
     po_number: order.po_number,
     items: draftItems,
@@ -325,9 +381,10 @@ function toolCreateShopifyDraft(emailId: string, emit: SSEEmitter): string {
     currency: order.currency,
     verified: false,
     created_at: new Date().toISOString(),
+    shopify_invoice_url: shopifyResult.invoiceUrl
   };
 
-  emit({ type: "agent_log", agent: "order_builder", content: `Draft created: ${inStock.length} items, ${order.currency} ${draft.total.toLocaleString()}` });
+  emit({ type: "agent_log", agent: "order_builder", content: `Draft created in Shopify: #${shopifyResult.draftOrderId}` });
   if (oos.length > 0) {
     emit({ type: "agent_log", agent: "order_builder", content: `${oos.length} item(s) excluded (out of stock)` });
   }
@@ -392,7 +449,7 @@ async function runTool(
     case "check_stock":
       return toolCheckStock(input.email_id, emit);
     case "create_shopify_draft":
-      return toolCreateShopifyDraft(input.email_id, emit);
+      return await toolCreateShopifyDraft(input.email_id, emit);
     case "verify_order_total":
       return toolVerifyOrderTotal(input.email_id, emit);
     case "extract_structured_order_data":
