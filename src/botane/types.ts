@@ -78,6 +78,7 @@ export interface ShopifyDraft {
   currency: string;
   verified: boolean;
   created_at: string;
+  shopify_invoice_url: string;
 }
 
 export interface SSEEvent {
