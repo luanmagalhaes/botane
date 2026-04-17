@@ -12,9 +12,10 @@ AI-powered B2B order management agent for Botané Studios. Chat naturally with t
 | Agent pattern | Tool use loop (ReAct) |
 | Server | Express 5 |
 | Real-time | Server-Sent Events (SSE) |
-| Frontend | Next.js 16 + shadcn/ui + Tailwind CSS |
+| Frontend | Next.js 16 + MUI + Tailwind CSS |
 | Email | Gmail via IMAP (`imapflow` + `mailparser`) |
 | PDF parsing | `pdf-parse` |
+| Commerce | Shopify Admin API (inventory + draft orders) |
 
 ## Project structure
 
@@ -25,9 +26,9 @@ src/                          # Express backend
     pipeline.ts               # Agent orchestrator + tool definitions
     gmail.ts                  # Gmail IMAP connection + email fetching
     types.ts                  # TypeScript interfaces
-    mock-data.ts              # Stock data (Shopify integration pending)
-  index.ts                    # Standalone API test script
-  tools.ts                    # Tool use learning example
+  services/
+    shopify.ts                # Shopify Admin API client (stock + draft orders)
+    customParser.ts           # PDF/Excel extraction via Claude
 
 frontend/                     # Next.js frontend
   app/
@@ -88,10 +89,13 @@ Create a `.env` file or export variables in your terminal:
 export ANTHROPIC_API_KEY="sk-ant-..."
 export GMAIL_USER="botaneorders@gmail.com"
 export GMAIL_APP_PASSWORD="xxxx xxxx xxxx xxxx"
+export SHOPIFY_STORE_DOMAIN="yourstore.myshopify.com"
+export SHOPIFY_ACCESS_TOKEN="shpat_..."
 ```
 
 - Anthropic API key: [console.anthropic.com](https://console.anthropic.com)
 - Gmail App Password: [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+- Shopify Admin API token: Shopify Admin → Settings → Apps and sales channels → Develop apps → API credentials
 
 ### 3. Run the backend
 
@@ -116,19 +120,6 @@ Frontend starts at `http://localhost:3000` (or next available port).
 | Command | Description |
 |---|---|
 | `npm run dev` | Start the Botané chat server (port 4000) |
-| `npm start` | Run the basic API test script |
-| `npm run tools` | Run the tool use example (weather + calculator) |
-
-## Dependencies
-
-```
-@anthropic-ai/sdk   Anthropic API client
-express             HTTP server
-tsx                 TypeScript runner (no build step needed)
-typescript          Type checking
-@types/express      Express type definitions
-@types/node         Node.js type definitions
-```
 
 ## Example queries
 

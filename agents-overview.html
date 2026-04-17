@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Botané Agents — Overview</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --cream: #F5F3EF;
+      --green: #3D6B4F;
+      --green-dark: #2B4D39;
+      --green-light: #6B9079;
+      --gold: #C9A961;
+      --gold-light: #E8D9A8;
+      --cream-deep: #EBE7DF;
+      --terracotta: #B06B4B;
+      --slate: #3D4A52;
+      --text: #2B3530;
+      --text-light: #5B6460;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+      background: var(--cream);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+    .container { max-width: 1100px; margin: 0 auto; }
+    header {
+      text-align: center;
+      padding: 50px 20px;
+      background: linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+      color: white;
+      border-radius: 20px;
+      margin-bottom: 40px;
+      box-shadow: 0 10px 40px rgba(61, 107, 79, 0.2);
+    }
+    header h1 {
+      font-size: 38px;
+      font-weight: 600;
+      letter-spacing: -1px;
+      margin-bottom: 10px;
+    }
+    header .subtitle {
+      font-size: 16px;
+      opacity: 0.85;
+      max-width: 620px;
+      margin: 0 auto;
+    }
+    header .flower {
+      font-size: 32px;
+      display: block;
+      margin-bottom: 14px;
+    }
+    section { margin-bottom: 50px; }
+    h2 {
+      font-size: 24px;
+      color: var(--green-dark);
+      margin-bottom: 6px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    h2::before {
+      content: '';
+      width: 6px;
+      height: 28px;
+      background: var(--gold);
+      border-radius: 3px;
+    }
+    .section-desc {
+      color: var(--text-light);
+      margin-bottom: 24px;
+      margin-left: 18px;
+      font-size: 15px;
+    }
+    .diagram-box {
+      background: white;
+      border-radius: 16px;
+      padding: 36px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      overflow-x: auto;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 18px;
+    }
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 22px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+      border-left: 5px solid var(--green);
+      transition: transform 0.15s ease;
+    }
+    .card:hover { transform: translateY(-2px); }
+    .card.planned { border-left-color: var(--gold); background: linear-gradient(135deg, #fff 0%, var(--cream-deep) 100%); }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: var(--green);
+      color: white;
+      font-size: 18px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .card.planned .badge { background: var(--gold); color: var(--green-dark); }
+    .card-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--green-dark);
+    }
+    .card.planned .card-title { color: var(--terracotta); }
+    .card-tool {
+      font-family: 'SF Mono', Menlo, monospace;
+      font-size: 12px;
+      background: var(--cream-deep);
+      color: var(--green-dark);
+      padding: 3px 9px;
+      border-radius: 5px;
+      display: inline-block;
+      margin-bottom: 10px;
+    }
+    .card.planned .card-tool { background: var(--gold-light); color: var(--terracotta); }
+    .card-desc {
+      color: var(--text);
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .card-tech {
+      color: var(--text-light);
+      font-size: 13px;
+      font-style: italic;
+      border-top: 1px dashed var(--cream-deep);
+      padding-top: 8px;
+      margin-top: 10px;
+    }
+    .legend {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      font-size: 14px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 8px; }
+    .legend-swatch {
+      width: 14px; height: 14px; border-radius: 4px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .stat {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    }
+    .stat-value {
+      font-size: 30px;
+      font-weight: 700;
+      color: var(--green);
+      margin-bottom: 4px;
+    }
+    .stat.planned .stat-value { color: var(--gold); }
+    .stat-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-light);
+    }
+    footer {
+      text-align: center;
+      color: var(--text-light);
+      font-size: 13px;
+      margin-top: 40px;
+      padding-top: 30px;
+      border-top: 1px solid var(--cream-deep);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <header>
+      <span class="flower">&#x273F;</span>
+      <h1>Botané Operations Agents</h1>
+      <div class="subtitle">Seven working agents automating B2B order management — from reading Gmail to building a Shopify draft.</div>
+    </header>
+
+    <div class="stats">
+      <div class="stat"><div class="stat-value">7</div><div class="stat-label">Active Agents</div></div>
+      <div class="stat planned"><div class="stat-value">2</div><div class="stat-label">Planned</div></div>
+      <div class="stat"><div class="stat-value">2</div><div class="stat-label">Models Used</div></div>
+      <div class="stat"><div class="stat-value">0</div><div class="stat-label">Mocks Remaining</div></div>
+    </div>
+
+    <section>
+      <h2>System Flow</h2>
+      <p class="section-desc">A single user message triggers the agent. Claude Sonnet 4.6 decides which tools to call; each tool runs a specific agent and streams its status back through SSE.</p>
+      <div class="diagram-box">
+        <pre class="mermaid">
+flowchart TD
+    U["User Message"]:::user
+    O["Orchestrator<br/>claude-sonnet-4-6"]:::orch
+    subgraph Tools [" 7 Agents (tools) "]
+      T1["read_inbox<br/><span>Inbox Reader</span>"]:::active
+      T2["get_email<br/><span>Email Classifier</span>"]:::active
+      T3["parse_purchase_order<br/><span>PO Parser</span>"]:::active
+      T4["extract_structured_order_data<br/><span>Custom Extractor</span>"]:::active
+      T5["check_stock<br/><span>Stock Checker</span>"]:::active
+      T6["create_shopify_draft<br/><span>Order Builder</span>"]:::active
+      T7["verify_order_total<br/><span>Order Verifier</span>"]:::active
+    end
+    G[("Gmail IMAP")]:::ext
+    H["Claude Haiku 4.5<br/>extraction"]:::ext
+    S[("Shopify Admin API<br/>inventory")]:::shopify
+    D[("Shopify Admin API<br/>draft orders")]:::shopify
+    F["Frontend (SSE stream)"]:::user
+
+    U --> O
+    O --> T1 --> G
+    O --> T2 --> G
+    O --> T3 --> H
+    O --> T4 --> H
+    O --> T5 --> S
+    O --> T6 --> D
+    O --> T7
+    T1 & T2 & T3 & T4 & T5 & T6 & T7 --> O
+    O --> F
+
+    classDef user fill:#3D6B4F,stroke:#2B4D39,color:#fff,stroke-width:2px
+    classDef orch fill:#C9A961,stroke:#8F7A43,color:#2B3530,stroke-width:2px
+    classDef active fill:#E8F0EA,stroke:#3D6B4F,color:#2B4D39,stroke-width:1.5px
+    classDef ext fill:#fff,stroke:#6B9079,color:#2B4D39,stroke-width:1.5px
+    classDef shopify fill:#E8F4FA,stroke:#3D6B4F,color:#2B4D39,stroke-width:1.5px
+        </pre>
+      </div>
+    </section>
+
+    <section>
+      <h2>Current Agents</h2>
+      <p class="section-desc">These seven are implemented, tested, and running against real Gmail data.</p>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--green);"></span>Active agent</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:var(--gold);"></span>Planned agent</div>
+      </div>
+      <div class="grid">
+
+        <div class="card">
+          <div class="card-header"><div class="badge">&#128231;</div><div class="card-title">Inbox Reader</div></div>
+          <span class="card-tool">read_inbox</span>
+          <div class="card-desc">Connects to Gmail via IMAP and returns the list of B2B emails with sender, subject, partner, and type.</div>
+          <div class="card-tech">imapflow + mailparser &#8594; real Gmail inbox</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="badge">&#128269;</div><div class="card-title">Email Classifier</div></div>
+          <span class="card-tool">get_email</span>
+          <div class="card-desc">Fetches a specific email in full including attachments. Identifies the partner and the request type.</div>
+          <div class="card-tech">Rule-based partner/type detection on subject + body</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="badge">&#128196;</div><div class="card-title">PO Parser</div></div>
+          <span class="card-tool">parse_purchase_order</span>
+          <div class="card-desc">Extracts structured order data from a purchase order email — PO number, items, quantities, prices, totals.</div>
+          <div class="card-tech">claude-haiku-4-5 &#8226; JSON extraction</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="badge">&#129513;</div><div class="card-title">Custom Extractor</div></div>
+          <span class="card-tool">extract_structured_order_data</span>
+          <div class="card-desc">Deep extraction for PDFs and Excel with strict ean/sku, price normalization, and currency validation.</div>
+          <div class="card-tech">claude-haiku-4-5 &#8226; PDF as base64 document</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="badge">&#128230;</div><div class="card-title">Stock Checker</div></div>
+          <span class="card-tool">check_stock</span>
+          <div class="card-desc">Queries Shopify inventory per SKU. Flags items that are unavailable or do not exist in the catalog.</div>
+          <div class="card-tech">Shopify Admin API &#8226; GraphQL productVariants</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="badge">&#128736;&#65039;</div><div class="card-title">Order Builder</div></div>
+          <span class="card-tool">create_shopify_draft</span>
+          <div class="card-desc">Creates a real draft order in Shopify, only with in-stock items. Returns the draft ID and invoice URL for human review inside Shopify.</div>
+          <div class="card-tech">Shopify Admin API &#8226; REST draft_orders</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="badge">&#9989;</div><div class="card-title">Order Verifier</div></div>
+          <span class="card-tool">verify_order_total</span>
+          <div class="card-desc">Confirms the draft total matches the original PO. Flags discrepancies caused by out-of-stock items.</div>
+          <div class="card-tech">Pure calculation &#8226; local</div>
+        </div>
+
+      </div>
+    </section>
+
+    <section>
+      <h2>Planned Agents</h2>
+      <p class="section-desc">These will replace the remaining mocks and extend the pipeline to the end of the order lifecycle.</p>
+      <div class="grid">
+
+        <div class="card planned">
+          <div class="card-header"><div class="badge">&#128226;</div><div class="card-title">Notifier</div></div>
+          <span class="card-tool">send_notification</span>
+          <div class="card-desc">Sends confirmation or follow-up messages to the ops team and the retail partner when a draft is built or an item is back-ordered.</div>
+          <div class="card-tech">Gmail SMTP or Slack</div>
+        </div>
+
+        <div class="card planned">
+          <div class="card-header"><div class="badge">&#128231;</div><div class="card-title">Reply Drafter</div></div>
+          <span class="card-tool">draft_partner_reply</span>
+          <div class="card-desc">Composes a reply to the partner in the original language — confirming the order, listing any out-of-stock lines with expected restock dates.</div>
+          <div class="card-tech">claude-haiku-4-5 &#8226; Gmail draft</div>
+        </div>
+
+      </div>
+    </section>
+
+    <footer>
+      Botan&eacute; Operations Platform &#8226; built on the Anthropic API &#8226; parallel LangChain/LangGraph version available
+    </footer>
+
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+        fontSize: '14px'
+      },
+      flowchart: { curve: 'basis', htmlLabels: true, padding: 15 }
+    });
+  </script>
+</body>
+</html>
