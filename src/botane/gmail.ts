@@ -57,13 +57,17 @@ async function parseEmail(message: { uid: number; source: Buffer }): Promise<Moc
     const partner = detectPartner(from, subject, body);
     const type = detectType(subject, body);
 
-    let attachment: { name: string; content: string } | undefined;
+    let attachment: { name: string; content: string; rawBuffer?: Buffer } | undefined;
 
     if (parsed.attachments && parsed.attachments.length > 0) {
       const att = parsed.attachments[0];
       const filename = att.filename ?? "attachment";
-      const text = await extractAttachmentText(att.content, filename);
-      attachment = { name: filename, content: text };
+      const extracted = await extractAttachmentText(att.content, filename);
+      attachment = {
+        name: filename,
+        content: extracted.text,
+        rawBuffer: extracted.isPdf ? att.content : undefined,
+      };
     }
 
     return {
